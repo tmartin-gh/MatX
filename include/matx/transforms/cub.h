@@ -37,6 +37,10 @@
 #include <cstdio>
 #ifdef __CUDACC__
 #include <cub/cub.cuh>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/constant_iterator.h>
+#include <thrust/iterator/discard_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #endif
 #include <numeric>
 
@@ -45,6 +49,7 @@
 #include "matx/core/tensor.h"
 #include "matx/core/iterator.h"
 #include "matx/core/operator_utils.h"
+#include "matx/operators/ifelse.h"
 
 
 namespace matx {
@@ -59,7 +64,7 @@ typedef enum { SORT_DIR_ASC, SORT_DIR_DESC } SortDirection_t;
 // is outperformed by the radixSort
 constexpr index_t cubSegmentCuttoff = 8192;
 /**
- * Parameters needed to execute a sort operation.
+ * Parameters needed to execute various CUB operations.
  */
 namespace detail {
 typedef enum {
@@ -72,12 +77,15 @@ typedef enum {
   CUB_OP_REDUCE_MAX,
   CUB_OP_SELECT,
   CUB_OP_SELECT_IDX,
-  CUB_OP_UNIQUE
+  CUB_OP_UNIQUE,
+  CUB_OP_REDUCE_ARGMAX,
+  CUB_OP_REDUCE_ARGMIN,
+  CUB_OP_ENUM_SIZE
 } CUBOperation_t;
 
 struct CubParams_t {
   CUBOperation_t op;
-  std::vector<index_t> size{10};
+  std::vector<index_t> size{CUB_OP_ENUM_SIZE};
   index_t batches{0};
   MatXDataType_t dtype;
   cudaStream_t stream;
@@ -111,7 +119,13 @@ struct UniqueParams_t {
 
 struct EmptyParams_t {};
 
-
+struct CustomArgMaxCmpOp
+{
+  template <typename T>
+  __MATX_DEVICE__ __MATX_HOST__ __MATX_INLINE__ T operator()(const T &a, const T &b) const {
+    return thrust::get<1>(a) < thrust::get<1>(b) ? b : a;
+  }
+};
 
 template <typename OutputTensor, typename InputOperator, CUBOperation_t op, typename CParams = EmptyParams_t>
 class matxCubPlan_t {
@@ -123,10 +137,9 @@ public:
   /**
    * Construct a handle for CUB operations
    *
-   * Creates a handle for performing a CUB operation. Currently supported
-   * operations are sorting and prefix sum (cumsum). Operations can either be a
-   * single dimension, or batched across a dimension (rows of a matrix, for
-   * example).
+   * Creates a handle for performing a CUB operation.
+   * Operations can either be a single dimension, or batched across a dimension
+   * (rows of a matrix, for example).
    *
    *
    * @param a
@@ -226,7 +239,7 @@ public:
   }
 
   /**
-   * Sort destructor
+   * CUB Plan destructor
    *
    * Destroys any helper data used for provider type and any workspace memory
    * created
@@ -1087,6 +1100,193 @@ private:
   size_t temp_storage_bytes = 0;
 };
 
+template <typename OutputTensor, typename OutputIndexTensor, typename InputOperator, CUBOperation_t op, typename CParams = EmptyParams_t>
+class matxCubTwoOutputPlan_t {
+  using cub_index_t = int;
+  static constexpr int RANK = OutputTensor::Rank();
+  using T1 = typename InputOperator::scalar_type;
+  using T2 = typename OutputTensor::scalar_type;
+
+public:
+
+  /**
+   * Construct a handle for CUB operations
+   *
+   * Creates a handle for performing a two-output CUB operation.
+   * Operations can either be a single dimension, or batched across a dimension
+   * (rows of a matrix, for example).
+   *
+   *
+   * @param a
+   *   Input tensor view
+   * @param a_out
+   *   Output tensor
+   * @param a_idx_out
+   *   Output tensor
+   * @param stream
+   *   CUDA stream
+   *
+   */
+  matxCubTwoOutputPlan_t(OutputTensor &a_out, OutputIndexTensor &a_idx_out, const InputOperator &a, const CParams &cparams, const cudaStream_t stream = 0) :
+    cparams_(cparams)
+  {
+#ifdef __CUDACC__
+    MATX_NVTX_START("", matx::MATX_NVTX_LOG_INTERNAL)
+
+    if constexpr (OutputTensor::Rank() > 0) {
+      make_tensor(t_offsets, {a.Shape()[0]+1});
+      for (int k=0; k<a.Shape()[0]+1; k++)
+      {
+        t_offsets(k) = a.Stride(0)*k;
+      }
+    }
+
+    if constexpr (op == CUB_OP_REDUCE_ARGMAX) {
+      ExecArgMax(a_out, a_idx_out, a, stream);
+    }
+    else {
+      MATX_THROW(matxNotSupported, "Invalid CUB operation");
+    }
+
+
+    // Allocate any workspace needed by CUB
+    matxAlloc((void **)&d_temp, temp_storage_bytes, MATX_ASYNC_DEVICE_MEMORY,
+              stream);
+#endif
+  }
+
+  static auto GetCubParams([[maybe_unused]] OutputTensor &a_out,
+                           [[maybe_unused]] OutputIndexTensor &a_idx_out,
+                           const InputOperator &a,
+                           cudaStream_t stream)
+  {
+    CubParams_t params;
+
+    for (int r = 0; r < InputOperator::Rank(); r++) {
+      params.size.push_back(a.Size(r));
+    }
+
+    params.op = op;
+
+    params.dtype = TypeToInt<T1>();
+
+    params.stream = stream;
+
+    return params;
+  }
+
+  /**
+   * CUB Two Output Plan destructor
+   *
+   * Destroys any helper data used for provider type and any workspace memory
+   * created
+   *
+   */
+  ~matxCubTwoOutputPlan_t()
+  {
+    matxFree(d_temp, cudaStreamDefault);
+  }
+
+  /**
+   * Execute a max on a tensor
+   *
+   * @note Views being passed must be in row-major order
+   *
+   * @tparam OutputTensor
+   *   Type of output tensor
+   * @tparam OutputIndexTensor
+ *   Output index tensor type
+   * @tparam InputOperator
+   *   Type of input tensor
+   * @param a_out
+   *   Output tensor
+   * @param a_idx_out
+   *   Output index tensor
+   * @param a
+   *   Input tensor
+   * @param stream
+   *   CUDA stream
+   *
+   */
+  inline void ExecArgMax(OutputTensor &a_out,
+                         OutputIndexTensor &a_idx_out,
+                         const InputOperator &a,
+                         const cudaStream_t stream)
+  {
+#ifdef __CUDACC__
+    MATX_NVTX_START("", matx::MATX_NVTX_LOG_INTERNAL)
+    typename detail::base_type_t<InputOperator> in_base = a;
+    typename detail::base_type_t<OutputTensor> out_base = a_out;
+
+    // Check whether this is a segmented reduction or single-value output. Segmented reductions are any
+    // type of reduction where there's not a single output, since any type of reduction can be generalized
+    // to a segmented type
+    if constexpr (OutputTensor::Rank() > 0) {
+      printf("Segmented Reduce\n");
+      auto ft = [&](auto &&in, auto &&out, auto&& idx_out, auto &&begin, auto &&end) {
+          //return cub::DeviceSegmentedReduce::Max(d_temp, temp_storage_bytes, in, out, static_cast<int>(TotalSize(out_base)), begin, end, stream);
+
+          //auto t_in = make_tensor<int>({4,2,5});
+          auto zip_in = thrust::make_zip_iterator(thrust::make_counting_iterator<cub_index_t>(0), in);
+          auto zip_out = thrust::make_zip_iterator(idx_out.Data(), out.Data());
+          detail::CustomArgMaxCmpOp cmp_op;
+          auto initial_value = cuda::std::tuple<cub_index_t,typename InputOperator::scalar_type>(-1, std::numeric_limits<typename InputOperator::scalar_type>::min());
+          return cub::DeviceSegmentedReduce::Reduce(
+              d_temp,
+              temp_storage_bytes,
+              zip_in,
+              zip_out,
+              static_cast<int>(TotalSize(out_base)), //static_cast<int>(in.Shape()[0]),
+              begin, //t_offsets.Data(),
+              end, //t_offsets.Data() + 1,
+              cmp_op,
+              initial_value,
+              stream);
+          //return cudaSuccess;
+      };
+      auto rv = ReduceInput(ft, out_base, a_idx_out, in_base);
+      MATX_ASSERT_STR_EXP(rv, cudaSuccess, matxCudaError, "Error in cub::DeviceSegmentedReduce::Max");
+    }
+    else {
+      printf("Full Reduce\n");
+      //auto ft = [&](auto &&in, auto &&out, [[maybe_unused]] auto &&unused1, [[maybe_unused]] auto &&unused2) {
+      //  return cub::DeviceReduce::Max(d_temp, temp_storage_bytes, in, out, static_cast<int>(TotalSize(in_base)), stream);
+      //};
+      //auto rv = ReduceInput(ft, out_base, in_base);
+
+      auto zip_in = thrust::make_zip_iterator(thrust::make_counting_iterator<cub_index_t>(0), a.Data());
+      auto zip_out = thrust::make_zip_iterator(a_idx_out.Data(), a_out.Data());
+      detail::CustomArgMaxCmpOp cmp_op;
+      auto initial_value = cuda::std::tuple<cub_index_t,typename InputOperator::scalar_type>(-1, std::numeric_limits<typename InputOperator::scalar_type>::min());
+
+      auto rv = cub::DeviceReduce::Reduce(
+          d_temp,
+          temp_storage_bytes,
+          zip_in,
+          zip_out,
+          static_cast<int>(TotalSize(a)),
+          cmp_op,
+          initial_value,
+          stream);
+      MATX_ASSERT_STR_EXP(rv, cudaSuccess, matxCudaError, "Error in cub::DeviceReduce::Max");
+    }
+#endif
+  }
+
+  // Public member variables
+  matx::tensor_t<cub_index_t, 1> t_offsets;
+
+private:
+  // Member variables
+  cublasStatus_t ret = CUBLAS_STATUS_SUCCESS;
+  CubParams_t params;
+  cudaStream_t stream_;
+  CParams cparams_; ///< Parameters specific to the operation type
+  T1 *d_temp = nullptr;
+  int *d_histogram = nullptr; // Used for hist()
+  size_t temp_storage_bytes = 0;
+};
+
 
 /**
  * Crude hash to get a reasonably good delta for collisions. This doesn't need
@@ -1340,6 +1540,98 @@ void cub_max(OutputTensor &a_out, const InputOperator &a,
     auto tmp = detail::matxCubPlan_t<OutputTensor, InputOperator, detail::CUB_OP_REDUCE_MAX>{
         a_out, a, {}, stream};
     tmp.ExecMax(a_out, a, stream);
+#endif
+#endif
+}
+
+/**
+ * Find argmax of a tensor using CUB
+ *
+ * @tparam OutputTensor
+ *   Output tensor type
+ * @tparam OutputIndexTensor
+ *   Output index tensor type
+ * @tparam InputOperator
+ *   Input operator type
+ * @param dest
+ *   max value output
+ * @param idest
+ *   argmax index output
+ * @param a
+ *   Input operator
+ * @param stream
+ *   CUDA stream
+ */
+template <typename OutputTensor, typename OutputIndexTensor, typename InputOperator>
+void cub_argmax(OutputTensor &dest, OutputIndexTensor &idest, const InputOperator &a,
+          const cudaStream_t stream = 0)
+{
+#ifdef __CUDACC__
+  MATX_NVTX_START("", matx::MATX_NVTX_LOG_API)
+#ifndef MATX_DISABLE_CUB_CACHE
+  auto params =
+      detail::matxCubPlan_t<TensorIndexType,
+                            InputOperator,
+                            detail::CUB_OP_REDUCE_ARGMAX>::GetCubParams(idx_out, a, stream);
+
+  // Get cache or new Sort plan if it doesn't exist
+  auto ret = detail::cub_cache.Lookup(params);
+  if (ret == std::nullopt) {
+    auto tmp = new detail::matxCubPlan_t<TensorIndexType, InputOperator, detail::CUB_OP_REDUCE_ARGMAX>{
+        idx_out, a, {}, stream};
+    tmp->ExecArgMax(idx_out, a, stream);
+    detail::cub_cache.Insert(params, static_cast<void *>(tmp));
+  }
+  else {
+    auto type =
+        static_cast<detail::matxCubPlan_t<TensorIndexType, InputOperator, detail::CUB_OP_REDUCE_ARGMAX> *>(
+            ret.value());
+    type->ExecArgMax(idx_out, a, stream);
+  }
+#else
+  auto tmp = detail::matxCubTwoOutputPlan_t<OutputTensor, OutputIndexTensor, InputOperator, detail::CUB_OP_REDUCE_ARGMAX>{
+      dest, idest, a, {}, stream};
+  tmp.ExecArgMax(dest, idest, a, stream);
+
+  //using cub_index_t = int;
+  //auto zip_in = thrust::make_zip_iterator(thrust::make_counting_iterator<cub_index_t>(0), a.Data());
+  ////auto discard_iterator = thrust::make_discard_iterator();
+  //auto zip_out = thrust::make_zip_iterator(idest.Data(), dest.Data());
+  //detail::CustomArgMaxCmpOp cmp_op;
+  //auto initial_value = cuda::std::tuple<cub_index_t,typename InputOperator::scalar_type>(-1, std::numeric_limits<typename InputOperator::scalar_type>::min());
+  //size_t temp_storage_bytes = 0;
+  //auto t_offsets = matx::make_tensor<cub_index_t>({a.Shape()[0]+1});
+  //for (int k=0; k<a.Shape()[0]+1; k++)
+  //{
+  //  t_offsets(k) = a.Stride(0)*k;
+  //}
+  //cub::DeviceSegmentedReduce::Reduce(
+  //    nullptr,
+  //    temp_storage_bytes,
+  //    zip_in,
+  //    zip_out,
+  //    static_cast<int>(a.Shape()[0]),
+  //    t_offsets.Data(),
+  //    t_offsets.Data() + 1,
+  //    cmp_op,
+  //    initial_value,
+  //    stream);
+  //auto t_temp_storage = matx::make_tensor<uint8_t>({static_cast<matx::index_t>(temp_storage_bytes)});
+  //cub::DeviceSegmentedReduce::Reduce(
+  //    t_temp_storage.Data(),
+  //    temp_storage_bytes,
+  //    zip_in,
+  //    zip_out,
+  //    static_cast<int>(a.Shape()[0]),
+  //    t_offsets.Data(),
+  //    t_offsets.Data() + 1,
+  //    cmp_op,
+  //    initial_value,
+  //    stream);
+
+  auto t_normalized_index = idest - slice(tmp.t_offsets, {0}, {a.Shape()[0]});
+  auto t_valid = idest != -1;
+  IFELSE(t_valid, idest = t_normalized_index, idest = 0).run(stream);
 #endif
 #endif
 }

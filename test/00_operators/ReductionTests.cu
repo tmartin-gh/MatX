@@ -100,7 +100,7 @@ TYPED_TEST_SUITE(ReductionTestsFloat, MatXFloatTypesCUDAExec);
 TYPED_TEST_SUITE(ReductionTestsNumeric, MatXNumericTypesCUDAExec);
 TYPED_TEST_SUITE(ReductionTestsIntegral, MatXAllIntegralTypesCUDAExec);
 TYPED_TEST_SUITE(ReductionTestsNumericNonComplex,
-                 MatXNumericNonComplexTypesCUDAExec);               
+                 MatXNumericNonComplexTypesCUDAExec);
 TYPED_TEST_SUITE(ReductionTestsFloatNonComplex, MatXFloatNonComplexTypesCUDAExec);
 TYPED_TEST_SUITE(ReductionTestsFloatNonComplexNonHalf,
                  MatXFloatNonComplexNonHalfTypesCUDAExec);
@@ -111,10 +111,10 @@ TYPED_TEST_SUITE(ReductionTestsComplexNonHalfTypes, MatXComplexNonHalfTypesCUDAE
 
 
 TYPED_TEST_SUITE(ReductionTestsNumericNonComplexAllExecs,
-                 MatXNumericNonComplexTypesAllExecs);  
+                 MatXNumericNonComplexTypesAllExecs);
 TYPED_TEST_SUITE(ReductionTestsFloatNonComplexNonHalfAllExecs,
-                 MatXFloatNonComplexNonHalfTypesAllExecs);  
-TYPED_TEST_SUITE(ReductionTestsNumericNoHalfAllExecs, MatXNumericNoHalfTypesAllExecs);          
+                 MatXFloatNonComplexNonHalfTypesAllExecs);
+TYPED_TEST_SUITE(ReductionTestsNumericNoHalfAllExecs, MatXNumericNoHalfTypesAllExecs);
 TYPED_TEST_SUITE(ReductionTestsComplexNonHalfTypesAllExecs, MatXComplexNonHalfTypesAllExecs);
 
 
@@ -125,7 +125,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, VarianceStd)
   using TestType = cuda::std::tuple_element_t<0, TypeParam>;
   using ExecType = cuda::std::tuple_element_t<1, TypeParam>;
 
-  ExecType exec{};  
+  ExecType exec{};
 
   auto pb = std::make_unique<detail::MatXPybind>();
   constexpr index_t size = 100;
@@ -141,7 +141,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, VarianceStd)
   MATX_TEST_ASSERT_COMPARE(pb, t0, "var_ub", 0.01);
 
   (t0 = var(t1, 0)).run(exec);
-  MATX_TEST_ASSERT_COMPARE(pb, t0, "var_ml", 0.01);  
+  MATX_TEST_ASSERT_COMPARE(pb, t0, "var_ml", 0.01);
 
   // example-begin stdd-test-1
   (t0 = stdd(t1)).run(exec);
@@ -172,7 +172,7 @@ TYPED_TEST(ReductionTestsComplexNonHalfTypesAllExecs, VarianceStdComplex)
   MATX_TEST_ASSERT_COMPARE(pb, t0, "var_ub", 0.01);
 
   (t0 = var(t1, 0)).run(exec);
-  MATX_TEST_ASSERT_COMPARE(pb, t0, "var_ml", 0.01);    
+  MATX_TEST_ASSERT_COMPARE(pb, t0, "var_ml", 0.01);
 
   (t0 = stdd(t1)).run(exec);
   MATX_TEST_ASSERT_COMPARE(pb, t0, "std", 0.01);
@@ -196,7 +196,7 @@ TYPED_TEST(ReductionTestsNumericNoHalfAllExecs, Sum)
         {x, y, z});
     auto b = matx::make_tensor<TestType, 2>(
         {x, y});
-    
+
     (a = TestType(1)).run(exec);
 
     // example-begin sum-test-2
@@ -276,7 +276,7 @@ TYPED_TEST(ReductionTestsNumericNoHalfAllExecs, Sum)
 
     for (index_t i = 0; i < t1.Size(0); i++) {
       ASSERT_TRUE(MatXUtils::MatXTypeCompare(t1(i), (TestType)(t2t.Size(1))));
-    }    
+    }
   }
   {
     tensor_t<TestType, 2> t2({3, 4});
@@ -315,7 +315,7 @@ TYPED_TEST(ReductionTestsFloatNonComplex, Softmax)
   using TestType = cuda::std::tuple_element_t<0, TypeParam>;
   using ExecType = cuda::std::tuple_element_t<1, TypeParam>;
 
-  ExecType exec{};  
+  ExecType exec{};
 
   auto pb = std::make_unique<detail::MatXPybind>();
   constexpr index_t size = 300;
@@ -337,7 +337,7 @@ TYPED_TEST(ReductionTestsFloatNonComplex, Softmax)
   // example-begin softmax-test-2
   (t3_out = softmax(t3, {2})).run(exec);
   // example-end softmax-test-2
-  
+
   MATX_TEST_ASSERT_COMPARE(pb, t3_out, "t3_sm_axis2", 0.01);
 
   MATX_EXIT_HANDLER();
@@ -426,7 +426,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, PermutedReduce)
   {
     // example-begin max-test-2
     // Reduce a 4D tensor into a 2D tensor by collapsing the inner two dimensions. Both
-    // examples permute the dimensions before the reduction        
+    // examples permute the dimensions before the reduction
     (t2a = max(permute(t4,{2,3,0,1}))).run(exec);
     (t2b = max(t4, {0,1})).run(exec);
     // example-end max-test-2
@@ -462,7 +462,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, PermutedReduce)
   {
     // example-begin argmax-test-2
     // Reduce a 4D tensor into a 2D tensor by collapsing the inner two dimensions. Both
-    // examples permute the dimensions before the reduction    
+    // examples permute the dimensions before the reduction
     (mtie(t2a, t2ai) = argmax(permute(t4,{2,3,0,1}))).run(exec);
     (mtie(t2b, t2bi) = argmax(t4, {0,1})).run(exec);
     // example-end argmax-test-2
@@ -520,7 +520,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, PermutedReduce)
   {
     // example-begin all-test-2
     // Reduce a 4D tensor into a 2D tensor by collapsing the inner two dimensions. Both
-    // examples permute the dimensions before the reduction    
+    // examples permute the dimensions before the reduction
     (t2a = all(permute(t4,{2,3,0,1}))).run(exec);
     (t2b = all(t4, {0,1})).run(exec);
     // example-end all-test-2
@@ -591,7 +591,7 @@ TYPED_TEST(ReductionTestsNumericNonComplexAllExecs, Any)
     t3(1, 1, 1) = 6;
 
     // example-begin any-test-1
-    // Reduce a 4D tensor into a single output (0D) tensor indicating whether any values were 
+    // Reduce a 4D tensor into a single output (0D) tensor indicating whether any values were
     // convertible to "true"
     (t0 = any(t4)).run(exec);
     // example-end any-test-1
@@ -620,7 +620,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, AllClose)
   using TestType = cuda::std::tuple_element_t<0, TypeParam>;
   using ExecType = cuda::std::tuple_element_t<1, TypeParam>;
 
-  ExecType exec{}; 
+  ExecType exec{};
 
   // example-begin allclose-test-1
   auto A = make_tensor<TestType>({5, 5, 5});
@@ -763,7 +763,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, Percentile)
 
     (t0 = percentile(t1o, 80, PercentileMethod::HIGHER)).run(exec);
     exec.sync();
-    MATX_TEST_ASSERT_COMPARE(pb, t0, "t1o_higher80", 0.01);    
+    MATX_TEST_ASSERT_COMPARE(pb, t0, "t1o_higher80", 0.01);
   }
 
   MATX_EXIT_HANDLER();
@@ -819,7 +819,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, MinMaxNegative)
 {
   MATX_ENTER_HANDLER();
   using TestType = cuda::std::tuple_element_t<0, TypeParam>;
-  using ExecType = cuda::std::tuple_element_t<1, TypeParam>;  
+  using ExecType = cuda::std::tuple_element_t<1, TypeParam>;
   {
     auto t = matx::make_tensor<TestType, 1>({3});
     t.SetVals({-3, -1, -7});
@@ -856,7 +856,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, Max)
     (t0 = max(t1o)).run(exec);
     // example-end max-test-1
     exec.sync();
-    EXPECT_TRUE(MatXUtils::MatXTypeCompare(t0(), (TestType)(11)));    
+    EXPECT_TRUE(MatXUtils::MatXTypeCompare(t0(), (TestType)(11)));
   }
 
   MATX_EXIT_HANDLER();
@@ -881,7 +881,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, Min)
     (t0 = min(t1o)).run(exec);
     // example-end min-test-1
     exec.sync();
-    EXPECT_TRUE(MatXUtils::MatXTypeCompare(t0(), (TestType)(1))); 
+    EXPECT_TRUE(MatXUtils::MatXTypeCompare(t0(), (TestType)(1)));
   }
 
   MATX_EXIT_HANDLER();
@@ -907,13 +907,13 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, ArgMax)
     // example-end argmax-test-1
     exec.sync();
     EXPECT_TRUE(MatXUtils::MatXTypeCompare(t0(), (TestType)(11)));
-    EXPECT_TRUE(MatXUtils::MatXTypeCompare(t0i(), (TestType)(10)));    
+    EXPECT_TRUE(MatXUtils::MatXTypeCompare(t0i(), (TestType)(10)));
 
     tensor_t<TestType, 2> t2o{{2, 5}};
-    tensor_t<TestType, 1> t1o_small{{2}};    
+    tensor_t<TestType, 1> t1o_small{{2}};
     tensor_t<index_t, 1> t1i_small{{2}};
-    t2o.SetVals({{(T)2, (T)4, (T)1, (T)3, (T)5}, {(T)3, (T)1, (T)5, (T)2, (T)4}});    
-        
+    t2o.SetVals({{(T)2, (T)4, (T)1, (T)3, (T)5}, {(T)3, (T)1, (T)5, (T)2, (T)4}});
+
     (mtie(t1o_small, t1i_small) = argmax(t2o, {1})).run(exec);
     exec.sync();
 
@@ -921,6 +921,29 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, ArgMax)
     EXPECT_TRUE(MatXUtils::MatXTypeCompare(t2o(rel), (TestType)(5)));
     rel = GetIdxFromAbs(t2o, t1i_small(1));
     EXPECT_TRUE(MatXUtils::MatXTypeCompare(t2o(rel), (TestType)(5)));
+
+
+
+    tensor_t<TestType, 3> t3{{3, 2, 5}};
+    tensor_t<TestType, 1> t3_max{{3}};
+    tensor_t<index_t, 1> t3_argmax{{3}};
+    t3.SetVals(
+    {
+      {{(T)1, (T)2, (T)3, (T)4, (T)5}, {(T)6, (T)7, (T)8, (T)9, (T)10}},
+      {{(T)1, (T)3, (T)5, (T)7, (T)10}, {(T)2, (T)4, (T)6, (T)8, (T)9}},
+      {{(T)2, (T)4, (T)5, (T)1, (T)1}, {(T)1, (T)1, (T)1, (T)1, (T)1}},
+    });
+    index_t golden_t3_argmax[3] {10, 4, 2};
+
+    (mtie(t3_max, t3_argmax) = argmax(t3, {1,2})).run(exec);
+    exec.sync();
+    matx::print(t3_max);
+    matx::print(t3_argmax);
+
+    for (int k=0; k<3; k++)
+    {
+      EXPECT_TRUE(t3_argmax(k) == golden_t3_argmax[k]);;
+    }
   }
 
   MATX_EXIT_HANDLER();
@@ -946,20 +969,20 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, ArgMin)
     // example-end argmin-test-1
     exec.sync();
     EXPECT_TRUE(MatXUtils::MatXTypeCompare(t0(), (TestType)(1)));
-    EXPECT_TRUE(MatXUtils::MatXTypeCompare(t0i(), (TestType)(0)));    
+    EXPECT_TRUE(MatXUtils::MatXTypeCompare(t0i(), (TestType)(0)));
 
     tensor_t<TestType, 2> t2o{{2, 5}};
-    tensor_t<TestType, 1> t1o_small{{2}};    
-    tensor_t<index_t, 1> t1i_small{{2}};    
+    tensor_t<TestType, 1> t1o_small{{2}};
+    tensor_t<index_t, 1> t1i_small{{2}};
     t2o.SetVals({{(T)2, (T)4, (T)1, (T)3, (T)5}, {(T)3, (T)1, (T)5, (T)2, (T)4}});
 
     (mtie(t1o_small, t1i_small) = argmin(t2o, {1})).run(exec);
     exec.sync();
-    
+
     auto rel = GetIdxFromAbs(t2o, t1i_small(0));
     EXPECT_TRUE(MatXUtils::MatXTypeCompare(t2o(rel), (TestType)(1)));
     rel = GetIdxFromAbs(t2o, t1i_small(1));
-    EXPECT_TRUE(MatXUtils::MatXTypeCompare(t2o(rel), (TestType)(1)));  
+    EXPECT_TRUE(MatXUtils::MatXTypeCompare(t2o(rel), (TestType)(1)));
   }
 
   MATX_EXIT_HANDLER();
@@ -980,7 +1003,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, Mean)
 
     // example-begin mean-test-1
     auto t0 = make_tensor<TestType>({});
-    auto t4 = ones<TestType>({30, 40, 50, 60});    
+    auto t4 = ones<TestType>({30, 40, 50, 60});
     // Compute the mean over all dimensions in "t4" and store the result in "t0"
     (t0 = mean(t4)).run(exec);
     // example-end mean-test-1
@@ -1123,7 +1146,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, Find)
     (mtie(t1o, num_found) = find(t1, GT{thresh})).run(exec);
     // example-end find-test-1
     exec.sync();
-    
+
     int output_found = 0;
     for (int i = 0; i < t1.Size(0); i++) {
       if (t1(i) > thresh) {
@@ -1164,7 +1187,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, FindIdx)
     (mtie(t1o, num_found) = find_idx(t1, GT{thresh})).run(exec);
     // example-end find_idx-test-1
     exec.sync();
-    
+
     int output_found = 0;
     for (int i = 0; i < t1.Size(0); i++) {
       if (t1(i) > thresh) {
@@ -1217,7 +1240,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, FindIdxAndSelect)
     exec.sync();
 
     ASSERT_EQ(num_found(), num_found2());
-    
+
     for (int i = 0; i < t1o_slice.Size(0); i++) {
       ASSERT_EQ(t1o(i), t1o_slice(i));
     }
@@ -1265,7 +1288,7 @@ TYPED_TEST(ReductionTestsFloatNonComplexNonHalfAllExecs, Trace)
   using ExecType = cuda::std::tuple_element_t<1, TypeParam>;
 
   ExecType exec;
-    
+
   MATX_ENTER_HANDLER();
   index_t count = 10;
   TestType c = GenerateData<TestType>();
